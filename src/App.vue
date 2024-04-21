@@ -12,6 +12,24 @@
           </button>
         </p>
       </div>
+      <div class="field is-grouped">
+        <p class="control">
+          <button
+            class="button"
+            :class="{ 'is-danger': filterByImportance }"
+            @click.prevent="toggleImportanceFilter()"
+          >
+            Важные
+          </button>
+          <button
+            class="button ml-1"
+            :class="{ 'is-danger': filterByUrgency }"
+            @click.prevent="toggleUrgencyFilter()"
+          >
+            Срочные
+          </button>
+        </p>
+      </div>
     </form>
     <div v-for="todo in todos" :key="todo.id" class="card">
       <div class="card-content" :class="{ 'has-background-success-light': todo.completed }">
@@ -62,20 +80,69 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
-import { collection, onSnapshot, doc, addDoc, deleteDoc, updateDoc } from 'firebase/firestore'
+import {
+  collection,
+  onSnapshot,
+  doc,
+  addDoc,
+  deleteDoc,
+  updateDoc,
+  query,
+  orderBy,
+  where,
+  getDocs
+} from 'firebase/firestore'
 import { db } from '@/firebase'
 
-const todosCollection = collection(db, 'todos')
+const todosCollectionRef = collection(db, 'todos')
+let todosCollectionQuery = query(todosCollectionRef, orderBy('date', 'desc'))
 
 //New item field
 const newToDoText = ref('')
 
+//Todos
+const todos = ref([])
+
+//Current date
+const currentDate = new Date()
+
+//Common filter update
+const updateFilter = async () => {
+  const filters = []
+
+  if (filterByImportance.value) filters.push(where('important', '==', true))
+
+  if (filterByUrgency.value) filters.push(where('urgent', '==', true))
+
+  todosCollectionQuery = query(todosCollectionRef, orderBy('date', 'desc'), ...filters)
+
+  readDocs(await getDocs(todosCollectionQuery))
+}
+
+//Importance filter
+const filterByImportance = ref(false)
+
+const toggleImportanceFilter = () => {
+  filterByImportance.value = !filterByImportance.value
+  updateFilter()
+}
+
+//Urgency filter
+const filterByUrgency = ref(false)
+
+const toggleUrgencyFilter = () => {
+  filterByUrgency.value = !filterByUrgency.value
+  updateFilter()
+}
+
+//Methods
 const addToDo = async () => {
-  await addDoc(todosCollection, {
+  await addDoc(todosCollectionRef, {
     text: newToDoText.value,
     completed: false,
     important: false,
     urgent: false,
+    date: Date.now(),
     timestamp: new Date()
   })
 
@@ -87,7 +154,7 @@ const completeToDo = (id) => {
 
   if (todo) todo.completed = !todo.completed
 
-  updateDoc(doc(todosCollection, id), {
+  updateDoc(doc(todosCollectionRef, id), {
     completed: todo.completed
   })
 }
@@ -97,7 +164,7 @@ const markAsImportant = (id) => {
 
   if (todo) todo.important = !todo.important
 
-  updateDoc(doc(todosCollection, id), {
+  updateDoc(doc(todosCollectionRef, id), {
     important: todo.important
   })
 }
@@ -107,18 +174,14 @@ const markAsUrgent = (id) => {
 
   if (todo) todo.urgent = !todo.urgent
 
-  updateDoc(doc(todosCollection, id), {
+  updateDoc(doc(todosCollectionRef, id), {
     urgent: todo.urgent
   })
 }
 
 const removeToDo = (id) => {
-  deleteDoc(doc(todosCollection, id))
+  deleteDoc(doc(todosCollectionRef, id))
 }
-
-const todos = ref([])
-
-const currentDate = new Date()
 
 const timestampFormatted = (timestamp) => {
   const timestampDate = timestamp
@@ -141,29 +204,31 @@ const timestampFormatted = (timestamp) => {
 }
 
 onMounted(async () => {
-  onSnapshot(todosCollection, (querySnapshot) => {
-    const fetchedTodos = []
-
-    querySnapshot.forEach((doc) => {
-      const docData = doc.data()
-
-      const todo = {
-        id: doc.id,
-        text: docData.text,
-        completed: docData.completed,
-        timestamp: docData.timestamp.toDate(),
-        important: docData.important,
-        urgent: docData.urgent
-      }
-
-      fetchedTodos.push(todo)
-    })
-
-    fetchedTodos.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())
-
-    todos.value = fetchedTodos
+  onSnapshot(todosCollectionQuery, (querySnapshot) => {
+    readDocs(querySnapshot)
   })
 })
+
+const readDocs = async (docs) => {
+  const fetchedTodos = []
+
+  docs.forEach((doc) => {
+    const docData = doc.data()
+
+    const todo = {
+      id: doc.id,
+      text: docData.text,
+      completed: docData.completed,
+      timestamp: docData.timestamp.toDate(),
+      important: docData.important,
+      urgent: docData.urgent
+    }
+
+    fetchedTodos.push(todo)
+  })
+
+  todos.value = fetchedTodos
+}
 </script>
 
 <style>
