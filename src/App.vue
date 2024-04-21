@@ -62,23 +62,22 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
-import { v4 as uuidv4 } from 'uuid'
-import { collection, getDocs } from 'firebase/firestore'
+import { collection, onSnapshot, doc, addDoc, deleteDoc, updateDoc } from 'firebase/firestore'
 import { db } from '@/firebase'
 
+const todosCollection = collection(db, 'todos')
+
+//New item field
 const newToDoText = ref('')
 
-const addToDo = () => {
-  todos.value.unshift({
-    id: uuidv4(),
+const addToDo = async () => {
+  await addDoc(todosCollection, {
     text: newToDoText.value,
     completed: false,
     important: false,
     urgent: false,
     timestamp: new Date()
   })
-
-  console.log(todos.value)
 
   newToDoText.value = ''
 }
@@ -87,22 +86,34 @@ const completeToDo = (id) => {
   let todo = todos.value.find((todo) => todo.id == id)
 
   if (todo) todo.completed = !todo.completed
+
+  updateDoc(doc(todosCollection, id), {
+    completed: todo.completed
+  })
 }
 
 const markAsImportant = (id) => {
   let todo = todos.value.find((todo) => todo.id == id)
 
   if (todo) todo.important = !todo.important
+
+  updateDoc(doc(todosCollection, id), {
+    important: todo.important
+  })
 }
 
 const markAsUrgent = (id) => {
   let todo = todos.value.find((todo) => todo.id == id)
 
   if (todo) todo.urgent = !todo.urgent
+
+  updateDoc(doc(todosCollection, id), {
+    urgent: todo.urgent
+  })
 }
 
 const removeToDo = (id) => {
-  todos.value = todos.value.filter((todo) => todo.id != id)
+  deleteDoc(doc(todosCollection, id))
 }
 
 const todos = ref([])
@@ -130,28 +141,28 @@ const timestampFormatted = (timestamp) => {
 }
 
 onMounted(async () => {
-  const querySnapshot = await getDocs(collection(db, 'todos'))
+  onSnapshot(todosCollection, (querySnapshot) => {
+    const fetchedTodos = []
 
-  const fetchedTodos = []
+    querySnapshot.forEach((doc) => {
+      const docData = doc.data()
 
-  querySnapshot.forEach((doc) => {
-    const docData = doc.data()
+      const todo = {
+        id: doc.id,
+        text: docData.text,
+        completed: docData.completed,
+        timestamp: docData.timestamp.toDate(),
+        important: docData.important,
+        urgent: docData.urgent
+      }
 
-    const todo = {
-      id: doc.id,
-      text: docData.text,
-      completed: docData.completed,
-      timestamp: docData.timestamp.toDate(),
-      important: docData.important,
-      urgent: docData.urgent
-    }
+      fetchedTodos.push(todo)
+    })
 
-    fetchedTodos.push(todo)
+    fetchedTodos.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())
+
+    todos.value = fetchedTodos
   })
-
-  fetchedTodos.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())
-
-  todos.value = fetchedTodos
 })
 </script>
 
